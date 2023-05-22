@@ -1,0 +1,470 @@
+---
+title: 'Business Statistics'
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+---
+
+```{r setup, message=FALSE, echo=FALSE}
+library(tidyverse)
+library(gridExtra)
+library(emmeans)
+library(car)
+library(Hmisc)
+options(width=100)
+```
+
+---
+
+# Scenario 1: Analysis of Food Standards Agency Interventions
+
+This project was centered around a crucial area of public health and safety: food standards. Our work was informed by a data set provided by [the Food Standards Agency of the UK government](https://www.data.gov.uk/dataset/090b5b23-5020-4480-96a0-8b294ca82653/local-authority-food-law-enforcement-returns), which encompassed local authorities across England, Wales, and Northern Ireland. Each local authority was assigned a rating, measured by their potential impact on public health, determined by the potential harm that could occur should they serve substandard food. Ratings varied from A (highest potential impact) to E (lowest potential impact).
+
+We performed a comprehensive analysis on these ratings and the subsequent interventions enacted by local authorities if establishments failed to be "broadly compliant" with hygiene and food safety laws. The aim of the interventions was to encourage establishments to rectify issues, thereby aligning with legal requirements. A central question of this project was whether establishments effectively respond to these interventions.
+
+To that end, we examined the distribution of successful enforcement actions across local authorities and their correlation to the number of professional enforcement officers employed, as well as the number of these officers in proportion to the number of establishments in each local authority. By scrutinizing the data through this lens, we aimed to unearth insights into what measures might lead to a greater proportion of successful responses to interventions, consequently improving overall food safety standards.
+
+## Section 1
+
+This part of the report is available for professionals to view.
+
+Through the use of graphical representations, this section initially illustrates the effectiveness of enforcement actions implemented by Local Authorities (LAs) and establishments with varying ratings. 
+
+Subsequently, the correlation between the success rate of enforcement actions and the number of employees, as well as the average proportion of employees per establishment, is analyzed.
+
+### Data Dictionary
+Variables are described in the table below
+
+| Variable | Description |
+|----------|----------|
+| LAName   | Name of Local Authorities  |
+| Total%ofInterventionsachieved(premisesratedA-E)   | Success rate of interventions   |
+| Total%ofInterventionsachieved-premisesratedA | Success rate of interventions for A rated establishments|
+| Total%ofInterventionsachieved-premisesratedB | Success rate of interventions for B rated establishments|
+| Total%ofInterventionsachieved-premisesratedC | Success rate of interventions for C rated establishments|
+| Total%ofInterventionsachieved-premisesratedD | Success rate of interventions for D rated establishments|
+| Total%ofInterventionsachieved-premisesratedE | Success rate of interventions for E rated establishments|
+| ProfessionalFullTimeEquivalentPosts-occupied | Number of FTE food safety employees |
+| Totalestablishments(includingnotyetrated&outside) | Total number of establishments, including those that are not rated and those that outside the programme | 
+| Establishmentsnotyetratedforintervention | Number of establishments not yet rated |
+| Establishmentsoutsidetheprogramme | Number of establishments outside the programme |
+
+### Data Preparation
+
+```{r read data, message = FALSE}
+food.data <- read_csv("2019-20-enforcement-data-food-hygiene.csv")
+```
+
+```{r data preparation}
+# Clean Data
+food.data <- mutate(food.data, success.total=`Total%ofInterventionsachieved(premisesratedA-E)`,
+success.A=`Total%ofInterventionsachieved-premisesratedA`,
+success.B=`Total%ofInterventionsachieved-premisesratedB`,
+success.C=`Total%ofInterventionsachieved-premisesratedC`,
+success.D=`Total%ofInterventionsachieved-premisesratedD`,
+success.E=`Total%ofInterventionsachieved-premisesratedE`,
+employees=`ProfessionalFullTimeEquivalentPosts-occupied *`) %>%
+  filter(!is.na(success.total), success.A != "NR")
+
+# success.A needs to be converted to number format
+food.data$success.A <- as.numeric(food.data$success.A)
+```
+
+In this dataset, any missing or abnormal data have been eliminated, and there are **no outliers** present.
+
+### Figure 1: Distribution of LAs' Successful Action Rates
+
+```{r Figure 1}
+# The plot with all levels combined
+mean.success.total <- round(mean(food.data$success.total),digits=2)
+
+Figure1 <- ggplot(food.data, aes(x=success.total, fill=Country)) +
+  geom_histogram(binwidth=1, position="stack") +
+  geom_vline(xintercept=mean.success.total) +
+  geom_text(x=mean.success.total, y=-0.8, label=mean.success.total, hjust=-0.2) +
+  labs(title="Figure 1: Distribution of LAs' Successful Action Rates",
+       x="Total Success Rate of LA's Interventions", y="Number of LAs")
+
+Figure1
+
+```
+
+As depicted in Figure 1, the distribution of enforcement success rates in this dataset demonstrates a right-skewness, with a mean of 86.33 across the three countries. An examination of the data reveals no substantial variations between the countries, however, Wales displays the most homogenous distribution without any discernible peaks.
+
+### Figure 2: Distributions of LA's Successful Action Rates for Different Ratings
+
+```{r Figure 2}
+# In the subsequent graphical representation, I intend to utilize the parameter "bins=50", as I believe that 50 bins will provide an optimal width and an adequate quantity to discern the trend in the data.
+
+# The plot with separate levels
+grid.arrange(
+  
+  ggplot(food.data, aes(x=success.A, fill=Country)) + 
+  geom_histogram(bins=50, position="stack") +
+  geom_vline(xintercept=mean(food.data$success.A)) +
+  geom_text(x=mean(food.data$success.A), y=0, size=2.5, label=round(mean(food.data$success.A), 2), hjust=1, vjust=0.5) +
+  labs(x="Success Rate (A Rated Estab.)", y="Number of LAs") +
+  theme(axis.title = element_text(size=10)),
+
+ggplot(food.data, aes(x=success.B, fill=Country)) + 
+  geom_histogram(bins=50, position="stack") +
+  geom_vline(xintercept=mean(food.data$success.B)) +
+  geom_text(x=mean(food.data$success.B), y=0, size=2.5, label=round(mean(food.data$success.B), 2), hjust=1, vjust=0.5) +
+  labs(x="Success Rate (B Rated Estab.)", y="Number of LAs") +
+  theme(axis.title = element_text(size=10)),
+
+ggplot(food.data, aes(x=success.C, fill=Country)) + 
+  geom_histogram(bins=50, position="stack") +
+  geom_vline(xintercept=mean(food.data$success.C)) +
+  geom_text(x=mean(food.data$success.C), y=0, size=2.5, label=round(mean(food.data$success.C), 2), hjust=1, vjust=0.5) +
+  labs(x="Success Rate (C Rated Estab.)", y="Number of LAs")  +
+  theme(axis.title = element_text(size=10)),
+
+ggplot(food.data, aes(x=success.D, fill=Country)) + 
+  geom_histogram(bins=50, position="stack") +
+  geom_vline(xintercept=mean(food.data$success.D)) +
+  geom_text(x=mean(food.data$success.D), y=0, size=2.5, label=round(mean(food.data$success.D), 2), hjust=1, vjust=0.5) +
+  labs(x="Success Rate (D Rated Estab.)", y="Number of LAs")  +
+  theme(axis.title = element_text(size=10)),
+
+ggplot(food.data, aes(x=success.E, fill=Country)) + 
+  geom_histogram(bins=50, position="stack") +
+  geom_vline(xintercept=mean(food.data$success.E)) +
+  geom_text(x=mean(food.data$success.E), y=0, size=2.5, label=round(mean(food.data$success.E), 2), hjust=1, vjust=0.5) +
+  labs(x="Success Rate (E Rated Estab.)", y="Number of LAs")  +
+  theme(axis.title = element_text(size=10))
+
+, top="Figure 2: Successful Action Rates for Different Ratings")
+
+```
+
+As illustrated in Figure 2, the distributions of the success rate corresponding to the five ratings, along with the respective mean values, are depicted. All distributions exhibit a right-skewness and no significant variations are observed between the countries. Furthermore, the mean value of the enforcement action success rate decreases as the rating increases. Establishments rated A exhibit the highest success rate of 98.08, while establishments rated E demonstrate the lowest success rate of 76.76.
+
+### Whether More Enforcement Officers Increase Response Success
+
+```{r data check}
+# Plot the distribution of employee numbers
+ggplot(food.data, aes(x=employees)) +
+  geom_histogram(bins=50) +
+  labs(x="Number of Employees in Each LA", y="Frequency", title="Distribution of Employee Numbers")
+
+```
+
+```{r data check2}
+# Check if the data are outliers or abnormal values
+filter(food.data, employees>15)
+```
+Data that exhibits a number of employees greater than 15 is considered to be within normal ranges and should not be eliminated from the dataset.
+
+```{r ggplot, message=FALSE}
+# Plot the linear regression of the number of employees and the total success rate
+ggplot(food.data, aes(y=success.total, x=employees)) + geom_point() + labs(y="Successful Intervention Rate", x="Number of Employees", title="Linear Regression of Employees & Success Rate") + geom_smooth(method=lm)
+```
+
+```{r regression summary}
+# Linear regression
+lm(success.total~employees, data=food.data) %>%
+  summary()
+```
+
+In conclusion, the effect of professional enforcement officer numbers on the success rate of enforcement actions is not significant, $t(321)=-0.09, p=0.93$.
+
+### Employees per establishment and proportion of successful responses
+
+```{r data preparation2}
+# Obtain the number of rated establishments and employee proportion
+food.data <- mutate(food.data,
+                    estab.total = `Totalestablishments(includingnotyetrated&outside)`,
+                    estab.not.rated = `Establishmentsnotyetratedforintervention`,
+                    estab.out = `Establishmentsoutsidetheprogramme`,
+                    estab.rated = estab.total-estab.not.rated-estab.out,
+                    employees.prop = employees/estab.rated)
+```
+
+```{r ggplot2, message=FALSE}
+# Plot the linear regression of the proportion of employees and the total success rate
+ggplot(food.data, aes(x=employees.prop, y=success.total)) +
+  geom_point() +
+  labs(y="Successful Intervention Rate", x="Employees per Estab.", title="Linear Regression of Employees Proportion & Success Rate") +
+  geom_smooth(method = "lm")
+```
+
+```{r regression summary2}
+# Linear regression
+lm(success.total~employees.prop, data=food.data) %>%
+  summary()
+```
+
+In summary, increasing the percentage of enforcement officers in each establishment can significantly increase the overall success rate of enforcement actions, $t(321)=3.87, p<0.001$.
+
+---
+
+## Section 2
+
+This report aims to provide insight for decision makers. 
+
+It will take a detailed look at how Local Authorities (such as district councils or unitary authorities) performed enforcement actions from 2019 to 2020. We will also investigate if having more staff at these Local Authorities would result in better performance. We will be discussing these two topics in separate sections of the report.
+
+### Topic 1
+
+```{r, echo=FALSE}
+Figure1
+```
+
+The overall success rate of enforcement actions from 2019 to 2020 was 86%. This is considered a very high level. Only 37 Local Authorities, or 11% of the total, had a success rate below 70%. The Local Authority with the lowest success rate, Richmond-Upton-Thames, was 21% and they need to continue to work on improving its performance. One concern that some stakeholders may have is whether there are any differences in the results between countries. However, the data in Figure 1 suggests that there are no significant differences among countries.
+
+Our analysis also showed that establishments with the highest potential impact on public health (rated "A") had an extremely high enforcement success rate of close to 100%, which means that during the year, these establishments all improved to higher ratings.
+
+To continue this progress, one potential next step could be to work on increasing the success rate for establishments rated "B" from 95% to even higher, or to improve the success rate for establishments rated "E" to help them achieve higher standards. Another option could be to investigate if there is a specific category of enforcement action that has a lower success rate, and if there are ways to improve it. This could provide insight into areas that need more attention or resources.
+
+### Topic 2
+
+Our report also looked into whether having more staff at Local Authorities would lead to better performance. We built two different linear models to examine this. The first model analyzed the relationship between the number of employees at a Local Authority and the success rate of enforcement actions, and found that there is no significant connection between the two. The second model looked at the relationship between the ratio of employees to establishments and found that increasing this ratio would result in a higher success rate of enforcement actions. 
+
+In simpler terms, having more employees per establishment, as opposed to just having more employees in general, would lead to better performance. Based on the findings in our report, we recommend that further research be done to find out what proportion of the workforce is needed to achieve a satisfactory success rate. Based on the results of this research, the number of staff in some Local Authorities should be increased as necessary.
+
+---
+
+# Scenario 2: An In-depth Analysis of eBook Sales Data
+
+In the ever-evolving landscape of the publishing industry, understanding the dynamics of eBook sales is of paramount importance. With the advancement of technology and the increasing popularity of digital reading platforms, eBook sales have become a critical component of the total revenue for many publishing companies.
+
+This project aims to dive deep into the complexities of eBook sales data, focusing on different genres, review scores, total number of reviews, and the impact of sale prices on the number of sales. By analyzing and interpreting the sales data, we hope to shed light on key trends and factors that influence the success of eBooks in the marketplace. This includes understanding whether books from different genres have distinct average daily sales, the effect of review scores and the total number of reviews on sales, as well as how the sale price might affect the number of sales across different genres.
+
+Our ultimate goal is to leverage the insights derived from this data analysis to make strategic recommendations for the company's marketing and pricing strategies, thereby enhancing the overall performance of our eBook sales. We believe that understanding these data patterns will not only help us to better cater to the preferences of our readers but also contribute to a more efficient and effective business model in the publishing industry.
+
+## Section 1
+
+In this part, I will provide the manager of a publishing company with analysis that addresses the following three inquiries:
+
+1. Whether the average daily sales of books vary between genres?
+2. To what extent do the average review score and total number of reviews affect book sales?
+3. The impact of sales price on the quantity of books sold and if there are variations across different types of books.
+
+### Data Dictionary
+Variables are described in the table below
+
+| Variable | Description |
+|----------|----------|
+| genre | The genre of books, categorized as children's, non-fiction, and fiction |
+| daily.sales | The average number of sales (minus refunds) per day over a given period |
+| avg.review | The average rating of books, given on a scale of 0 to 5 |
+| total.reviews | The total number of reviews |
+| sale.price | The sale price of the book |
+
+### Data Preparation
+
+```{r message = FALSE}
+sales.data <- read_csv("publisher_sales.csv") 
+```
+
+In this dataset, there are **no missing values or outliers** present. 
+However, it is worth mentioning that the attribute "daily.sales" exhibits a single occurrence of a negative value. This is due to the fact that "daily.sales" represents the average daily sales minus the number of returns over a specific period, and it is possible for a negative value to occur in specific situations (e.g., low sales in a given time period, coupled with high return rates from customers in the preceding time period). Nonetheless, this data has been retained in the dataset for further analysis.
+
+### Relationship between Average Daily Sales and Book Genres
+
+```{r message=FALSE}
+# Plot the distribution of daily.sales
+ggplot(sales.data, aes(x=daily.sales)) +
+  geom_histogram() +
+  labs(x="Average Daily Sales", y="Frequency", title="Distribution of Daily Sales")
+```
+
+```{r}
+# Use One-way ANOVA to see if the mean values differ between genre
+sales.by.genres <- lm(daily.sales~genre, data=sales.data)
+anova(sales.by.genres)
+```
+
+The one-way ANOVA shows the daily sales differs significantly across book genres, $F(2,5997) = 2590.50, p < 0.0001$. Afterwards, the specific differences will be examined.
+
+```{r}
+# Check the estimated marginal means of genres
+(sales.by.genres.emm <- emmeans(sales.by.genres, ~genre))
+```
+
+```{r}
+# Contrast the differences within genres
+(  sales.by.genres.pairs <- confint(pairs(sales.by.genres.emm))  )
+```
+
+```{r}
+# Plot the findings above
+grid.arrange(
+  
+  ggplot(summary(sales.by.genres.emm), 
+         aes(x=genre, y=emmean, ymin=lower.CL, ymax=upper.CL)) + 
+    geom_point() + geom_linerange() + 
+    labs(x="Genre", y="Average Sales", subtitle="Error Bars are Extent of 95% CIs") +
+    theme(axis.text.x = element_text(size=7)),
+  
+  ggplot(sales.by.genres.pairs, 
+         aes(x=contrast, y=estimate, ymin=lower.CL, ymax=upper.CL)) + 
+    geom_point() + geom_linerange() + geom_hline(yintercept=0, lty=2) +
+    labs(x="Contrast", y="Difference in Average Sales", subtitle="Error Bars are Extent of 95% CIs") +
+    theme(axis.text.x = element_text(size=7)), 
+  
+  ncol=2
+, top="Estimated Marginal Means within Three Genres")
+
+```
+
+As illustrated above, the estimated marginal means for children's literature, fiction, and non-fiction are 55.60, 105.90, and 75.90 respectively. The difference between the upper and lower bounds of their 95% confidence intervals are all within 1, indicating a low margin of error and high precision in predictions. 
+
+Furthermore, the difference in their average daily sales displays a consistent trend, thus it can be confidently stated that the genre of the book significantly impacts the daily sales of the book, with science fiction being the most popular, followed by non-science fiction and lastly children's literature.
+
+### Relationship between Average Daily Sales and Book Reviews
+
+```{r}
+# Plot the distribution of average reviews
+ggplot(sales.data, aes(x=avg.review)) +
+  geom_histogram(bins=50) +
+  labs(x="Average Reviews", y="Frequency", title="Distributions of Average Reviews")
+```
+
+```{r}
+# Plot the distributions of total reviews
+ggplot(sales.data, aes(x=total.reviews)) +
+  geom_histogram(bins=50) +
+  labs(x="Total Reviews", y="Frequency", title="Distribution of Total Reviews")
+```
+
+```{r message=FALSE}
+# Use the non-linear generalized additive model to see the approximate prediction results
+grid.arrange(
+  
+  ggplot(sales.data, aes(x=avg.review, y=daily.sales)) +
+    geom_point() + geom_smooth() +
+    labs(x="Average Reviews", y="Daily Sales"),
+  
+  ggplot(sales.data, aes(x=total.reviews, y=daily.sales)) +
+    geom_point() + geom_smooth() +
+    labs(x="Total Reviews", y="Daily Sales"), 
+  
+  top="Relationship between Reviews and Daily Sales")
+```
+
+
+```{r}
+# Correlation detect
+rcorr(as.matrix(select(sales.data, avg.review, total.reviews)))
+
+# Multicollinearity detect
+lm(daily.sales~avg.review+total.reviews, data=sales.data)%>%
+  vif()
+```
+
+The correlation between the average review score and the total number of reviews is weak at 0.1. Also, there is **no multicollinearity**.
+
+```{r}
+# Model 1: Regression between daily sales and average review
+(lm(daily.sales~avg.review, data=sales.data) %>%
+  summary())
+
+# Model 2: Regression between daily sales and total reviews
+(lm(daily.sales~total.reviews, data=sales.data) %>%
+  summary())
+
+# Model 3: Regression between daily sale and average review + total reviews
+(lm(daily.sales~avg.review+total.reviews, data=sales.data) %>%
+  summary())
+
+```
+
+**Model 1** and **Model 2** are separate comparisons of the two independent variables. As there is no significant correlation between avg.reviews and total.reviews, **Model 3** treats the two predictors as independent variables, connected by *+*. 
+
+ + **Model 1** concludes that for every 1 increase in the score of average review, daily sales decrease by 0.22, but this finding is not statistically significant because $t(5998)=-0.32, p=0.75$. In addition, the Adjusted R-squared (<0.0001) for this model is also small, indicating that the model does not fit the data well.
+ 
+ + **Model 2** concludes that each increase in the total number of reviews increases daily sales by 0.54. The finding is statistically significant, $t(5998)=68.69, p<0.0001$. Besides, The Adjusted R-squared value of 0.44 indicates that the explanatory power of the model's explanatory variables on the dependent variable is strong.
+
+ + **Model 3** shows each average increase in reviews corresponds to a 3.94 decrease in daily sales, $t(5998)=-7.69, p<0.0001$; each increase in total.reviews corresponds to a 0.54 increase in daily sales, $t(5998)=69.45, p<0.0001$. However, compared to **Model 2**, the addition of avg.reviews to model 3 made little change to the accuracy of the model (the Adjusted R-squared only increased by 0.0054), meaning that avg.reviews made little or no contribution to the model.
+ 
+In conclusion, average review scores have little to no effect on daily sales, but each increase in the total number of reviews results in a 0.54 increase in daily sales, p<0.0001.
+
+### The Effect of Sale Price upon The Number of Sales Across Genres
+
+```{r}
+# Plot the distribution of sale prices
+ggplot(sales.data, aes(x=sale.price)) +
+  geom_histogram(bins=50) +
+  labs(x="Sale Prices", y="Frequency", title="Distribution of Sale Prices")
+```
+
+
+```{r message=FALSE}
+# # Use the non-linear generalized additive model to see the approximate prediction results
+ggplot(sales.data, aes(x=sale.price, y=daily.sales, fill=genre)) +
+  geom_point() + geom_smooth() +
+  labs(x="Sale Price", y="Daily Sales", title="Relationship between Sale Prices and Daily Sales Across Genres")
+```
+
+```{r}
+# Constrast two models
+sales.by.price <- lm(daily.sales~sale.price, data=sales.data)
+sales.by.price.genre <- lm(daily.sales~sale.price+genre, data=sales.data)
+anova(sales.by.price, sales.by.price.genre)
+```
+
+The residual sum of squares for model 2 was 2949642 compared to 5102606 for model 1. In addition, $F(2,5996)=2188.3, p<0.0001$.
+
+These results indicate that model 2 fits better than model 1 when considering genre as the explanatory variable. This also implies that genre contributes to the prediction of daily sales.
+
+Furthermore, as the p-value is less than 0.0001, the original hypothesis that the difference between model 2 and model 1 is significant can be rejected.
+
+```{r}
+# Calculate estimated marginal means for both models for future use
+sales.by.price.emm <- emmeans(sales.by.price, ~sale.price)
+sales.by.price.genre.emm <- emmeans(sales.by.price.genre, ~sale.price)
+```
+
+```{r}
+# Plot two models
+sales.by.price.emm.summary <- summary(sales.by.price.emm)
+sales.by.price.emm.summary$model <- "Without Genre"
+
+sales.by.price.genre.emm.summary <- summary(sales.by.price.genre.emm)
+sales.by.price.genre.emm.summary$model <- "With Genre"
+
+two.models.emm.summary <- rbind(sales.by.price.emm.summary, sales.by.price.genre.emm.summary)
+
+ggplot(two.models.emm.summary, aes(x=sale.price, y=emmean, ymin=lower.CL, ymax=upper.CL, col=model)) + 
+  geom_point() + geom_linerange() + 
+  labs(x="Average Sale Prices", y="Daily Sales", col="Model", title="Comparison of Two Models")
+```
+
+This figure confirms the previous comparison. The inclusion of genre in the model reduces the difference between the upper and lower bounds of the confidence interval, thereby effectively increasing the precision of the model.
+
+---
+
+## Section 2
+
+This report will provide answers to three important questions for the management team. By creating and evaluating different models, we will explore:
+
+1. If books in different genres have different daily sales averages
+2. If there is a connection between a book's reviews and its sales
+3. If the price of a book has an impact on its sales, and if this impact varies depending on the genre of the book
+
+We will also provide recommendations based on our findings.
+
+### Question 1
+
+The results of our analysis indicate that there are distinct differences in the daily sales of books based on their genre. We used a technique called "analysis of variance" in a statistical model to arrive at this conclusion.
+
+Upon further examination, we found that fiction books had the highest daily sales on average, with around 106 sales per day. Non-fiction books had the second highest average with around 76 sales per day, while children's books had the lowest daily sales average, with around 56 sales per day.
+
+Based on the data we have analyzed, we recommend that the company should consider expanding their collection of fiction books. This could potentially increase profits for the company. Additionally, we suggest that the company should also consider taking steps to promote children's books and non-fiction books, as these genres have lower daily sales averages. This may include targeted marketing campaigns or offering discounts on these types of books.
+
+### Question 2
+
+Based on our initial hypotheses, we believed that books with higher review ratings and a larger number of total reviews would experience increased daily sales. However, after conducting a thorough analysis of the data using three distinct models, we found no direct correlation between a book's average rating and its daily sales. Instead, our analysis revealed that increasing the total number of reviews for a book can lead to a 0.54 increase in daily sales.
+
+Given this information, we recommend that the company encourages more customers to leave reviews. This could be done by implementing marketing campaigns that offer incentives for customers to leave reviews, such as discounts or cashback offers.
+
+### Question 3
+
+In this section, we looked at how considering the genre of a book affected the relationship between its sales price and daily sales. We found that incorporating the genre factor into the model improved its accuracy and better reflected the reality of sales trends.
+
+Therefore, we suggested to continue to consider the genre of a book when making decisions about pricing and marketing strategies. This will provide a more comprehensive and accurate understanding of sales trends and help the company make more informed decisions.
+
+---
