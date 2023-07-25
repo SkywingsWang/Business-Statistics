@@ -1,0 +1,491 @@
+---
+title: "英国食品安全干预措施成功率分析"
+author: '王天翼'
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+  word_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, message=FALSE, echo=FALSE, warning=FALSE}
+library(tidyverse)
+library(gridExtra)
+library(emmeans)
+library(car)
+library(Hmisc)
+library(ggpubr)
+options(width=100)
+```
+
+------------------------------------------------------------------------
+
+# 介绍
+
+该项目的[数据](https://www.data.gov.uk/dataset/090b5b23-5020-4480-96a0-8b294ca82653/local-authority-food-law-enforcement-returns)来源于英格兰、威尔士和北爱尔兰的地方当局对其管辖范围内的餐饮单位进行的影响力评级。这些评级是根据这些单位对公众健康造成的潜在影响（包括可能引发的疾病的人数和严重程度等）来确定的，评级从 A （潜在影响最大）到 E （潜在影响最小）不等。
+
+在餐饮单位的公众影响力被评级后，地方当局将对其进行检查，以确定它们是否符合卫生和食品安全法规的要求。如果单位未能达到"基本满意"的标准，地方当局将对其进行干预，要求他们纠正问题。如果干预后，单位成功达到了要求，他们将被允许继续运营。
+
+该项目旨在通过对未能达到"基本满意"要求的餐饮单位是否对地方当局的干预措施做出了有效反应，地方当局成功执行的执法行动与专业执法人员数量的关系、和执法人员与餐饮单位数量的比例之间的关系进行分析，找出影响餐饮单位对干预行动反应成功率的因素，为地方当局的决策提供依据，以提高整体食品安全水平。
+
+**该项目的报告分为两部分**。第一部分针对专业人士，详细展现了我们的数据分析过程和结果。第二部分则针对政策制定者，概述了我们的主要发现和建议。我们希望通过这种方式，使得无论读者的背景如何，都能够理解和利用我们的研究成果。
+
+# 第一部分：数据分析和结果
+
+## 数据字典
+
+数据的核心结构如下（完整字典请见附录）：
+
+| 变量名称                                          | 变量含义                                                                                                    |
+|----------------------------|--------------------------------------------|
+| LAType                                                                                                | 地方当局的类型                                                                                              |
+| LAName                                            | 地方当局的名称                                                                                              |
+| Totalestablishments(includingnotyetrated&outside) | 截至 2020 年 3 月 31 日，地方当局报告注册（或批准）的餐饮单位数量                                       |
+| Establishmentsnotyetratedforintervention          | 尚未进行食品卫生风险评级（如新企业等）的餐饮单位数量                                                    |
+| Establishmentsoutsidetheprogramme                 | 不在《卫生和食品安全法》管辖范围内的餐饮单位数量                                                        |
+| Aratedestablishments                              | 影响力分数大于92的餐饮单位数量，被视为对公共健康的潜在影响力最大，其干预频率至少为每6个月一次               |
+| Bratedestablishments                              | 影响力分数在72到91之间的餐饮单位数量，其干预频率至少为每12个月一次                                          |
+| Cratedestablishments                              | 影响力分数在52到71之间的餐饮单位数量，其干预频率至少为每18个月一次                                          |
+| Dratedestablishments                              | 影响力分数在31到51之间的餐饮单位数量，其干预频率至少为每24个月一次                                          |
+| Eratedestablishments                              | 影响力分数小于30的餐饮单位数量，被视为对公共健康的潜在影响力最小，其干预频率为每3年一次，或采用其他执法措施 |
+| Total%ofInterventionsachieved(premisesratedA-E)   | 根据《食品卫生干预情况评级》计算出的干预行动完成率                                                          |
+| Total%ofInterventionsachieved-premisesratedA      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 A 的单位的干预行动完成率                                 |
+| Total%ofInterventionsachieved-premisesratedB      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 B 的单位的干预行动完成率级                               |
+| Total%ofInterventionsachieved-premisesratedC      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 C 的单位的干预行动完成率                                 |
+| Total%ofInterventionsachieved-premisesratedD      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 D 的单位的干预行动完成率                                 |
+| Total%ofInterventionsachieved-premisesratedE      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 E 的单位的干预行动完成率                                 |
+| ProfessionalFullTimeEquivalentPosts-occupied \*   | 在食品卫生方面的执法人员数量                                                                            |
+
+## 读取食品卫生数据
+
+
+```{r read data, message = FALSE}
+
+# 导入数据
+food_data <- read_csv("2019-20-enforcement-data-food-hygiene.csv")
+
+# 了解数据结构，选择感兴趣的变量
+str(food_data[,c(1,2,4,19:25,36)])
+
+```
+
+## 数据清洗
+
+根据 LAEMS 2019-2020 年度数据，6 个地方当局的食品卫生调查报告未能及时提供。因此，我们删除了这 6 条数据。
+
+**数据修正**：总共有 52 个地方当局不存在 A 级影响力的餐饮单位。因此这些地方“对 A 级影响力餐饮单位进行成功干预的百分比”应为 "NR"，即没有应采取或报告的干预措施，而不是 部分数据中所呈现的 100。此外，为了数据处理的需要，我们将所有 "NR" 值改为空值。
+
+```{r}
+
+# 删除 6 份未提交的报告数据
+food_data <- filter(food_data,is.na(`Totalestablishments(includingnotyetrated&outside)`)==FALSE)
+
+# 对于被评为 A 级的企业，应采取的干预措施应为 0 
+# 因此，“已采取干预措施的百分比”项应注明为 "NR"，即没有应采取或报告的干预措施
+filter(food_data[,c(3,9,10,20)],Aratedestablishments==0)
+food_data$`Total%ofInterventionsachieved-premisesratedA`[which(food_data$Aratedestablishments==0)] <- 'NR'
+```
+
+```{r warning=FALSE}
+
+# 根据我们的需要转换变量类型
+food_data$`Total%ofInterventionsachieved-premisesratedA`[which(food_data$`Total%ofInterventionsachieved-premisesratedA`=='NR')] <- ''
+food_data$Country <- as.factor(food_data$Country)
+food_data$LAType <- as.factor(food_data$LAType)
+food_data$`Total%ofInterventionsachieved-premisesratedA` <- as.numeric(food_data$`Total%ofInterventionsachieved-premisesratedA`)
+food_data$`Total%ofBroadlyCompliantestablishments-A` <- as.numeric(food_data$`Total%ofBroadlyCompliantestablishments-A`)
+
+summary(food_data[,c(4,19:25,36)])
+```
+
+至此，数据预处理步骤已完成，可以进行下一步的分析。
+
+## 干预成功率分布图
+
+包含 A-E 级影响力评级的整体干预成功率如下：
+
+```{r plot1, warning=FALSE}
+
+plot1 <- ggplot(food_data,aes(x=`Total%ofInterventionsachieved(premisesratedA-E)`,y=..density..))+geom_histogram(binwidth=3)+
+  geom_density(col="orange")+geom_vline(xintercept = median(food_data$`Total%ofInterventionsachieved(premisesratedA-E)`),linetype="dashed")+
+  labs(x="干预成功率 (%)",y="概率密度",title = "干预成功率分布图 (A-E级)")+
+  annotate("text",x=80,y=0.05,
+           label=paste("中位数 =",round(median(food_data$`Total%ofInterventionsachieved(premisesratedA-E)`),2)))
+
+plot1
+```
+
+不同影响力的干预成功率分布图分别如下：
+
+```{r plot2, warning=FALSE}
+plot2 <- ggarrange(
+ggplot(food_data,aes(x=`Total%ofInterventionsachieved-premisesratedA`,y=..density..))+geom_histogram(binwidth=3)+
+  labs(x="干预成功率 (%)",y="概率密度",subtitle = "A 级影响力")+ylim(0,0.3)+xlim(0,101)+
+  geom_vline(xintercept = median(food_data$`Total%ofInterventionsachieved-premisesratedA`,na.rm=T),lty="dashed",col="blue")+
+  annotate("text",x=50,y=0.25,
+           label=paste("中位数 =",round(median(food_data$`Total%ofInterventionsachieved-premisesratedA`,na.rm=T),2))),
+
+ggplot(food_data,aes(x=`Total%ofInterventionsachieved-premisesratedB`,y=..density..))+geom_histogram(binwidth=3)+
+  labs(x="干预成功率 (%)",y="概率密度",subtitle = "B 级影响力")+ylim(0,0.3)+xlim(0,101)+
+  geom_vline(xintercept = median(food_data$`Total%ofInterventionsachieved-premisesratedB`,na.rm=T),lty="dashed",col="blue")+
+  annotate("text",x=50,y=0.25,
+           label=paste("中位数 =",round(median(food_data$`Total%ofInterventionsachieved-premisesratedB`,na.rm=T),2))),
+
+ggplot(food_data,aes(x=`Total%ofInterventionsachieved-premisesratedC`,y=..density..))+geom_histogram(binwidth=3)+
+  labs(x="干预成功率 (%)",y="概率密度",subtitle = "C 级影响力")+ylim(0,0.3)+xlim(0,101)+
+  geom_vline(xintercept = median(food_data$`Total%ofInterventionsachieved-premisesratedC`,na.rm=T),lty="dashed",col="blue")+
+  annotate("text",x=50,y=0.25,
+           label=paste("中位数 =",round(median(food_data$`Total%ofInterventionsachieved-premisesratedC`,na.rm=T),2))),
+
+ggplot(food_data,aes(x=`Total%ofInterventionsachieved-premisesratedD`,y=..density..))+geom_histogram(binwidth=3)+
+  labs(x="干预成功率 (%)",y="概率密度",subtitle = "D 级影响力")+ylim(0,0.3)+xlim(0,101)+
+  geom_vline(xintercept = median(food_data$`Total%ofInterventionsachieved-premisesratedD`,na.rm=T),lty="dashed",col="blue")+
+  annotate("text",x=50,y=0.25,
+           label=paste("中位数 =",round(median(food_data$`Total%ofInterventionsachieved-premisesratedD`,na.rm=T),2))),
+
+ggplot(food_data,aes(x=`Total%ofInterventionsachieved-premisesratedE`,y=..density..))+geom_histogram(binwidth=3)+
+  labs(x="干预成功率 (%)",y="概率密度",subtitle = "E 级影响力")+ylim(0,0.3)+xlim(0,101)+
+  geom_vline(xintercept = median(food_data$`Total%ofInterventionsachieved-premisesratedE`,na.rm=T),lty="dashed",col="blue")+
+  annotate("text",x=50,y=0.25,
+           label=paste("中位数 =",round(median(food_data$`Total%ofInterventionsachieved-premisesratedE`,na.rm=T),2))),
+ncol=2,nrow=3)
+
+plot2
+
+```
+
+## 执法人员数量与干预成功率的关系图
+
+本部分使用散点图和箱型图来显示执法人员数量与干预成功率之间的关系，如下所示：
+
+```{r plot3, message=FALSE}
+
+plot3 <- ggplot(food_data,aes(y=`Total%ofInterventionsachieved(premisesratedA-E)`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
+  geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人员数量",y="干预行动成功率 (%)",subtitle = "执法人员数量与干预成功率 (R=-0.002)")+ylim(0,100)
+
+plot3
+
+```
+
+```{r plot4, warning=FALSE, message=FALSE}
+
+food_data$FTE <- cut(food_data$`ProfessionalFullTimeEquivalentPosts-occupied *`,breaks = c(0,2,4,6,23))
+
+plot4 <- ggarrange(
+
+  ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedA`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
+  
+    geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "A (R=0.002)")+ylim(0,100),
+ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedB`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
+  
+  geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "B (R=0.007)")+ylim(0,100),
+ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedC`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
+  
+  geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "C (R=-0.003)")+ylim(0,100),
+ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedD`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
+  
+  geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "D (R=0.034)")+ylim(0,100),
+ggplot(food_data,aes(x=FTE,y=`Total%ofInterventionsachieved-premisesratedD`))+geom_boxplot()+
+  
+  geom_jitter(width = 0.4,size=0.05,alpha=0.5,col="purple")+
+  labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "箱型图")+ylim(0,100),
+ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedE`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
+  
+  geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "E (R=0.002)")+ylim(0,100))
+
+plot4
+```
+
+在进行回归之前，让我们先检查一下执法人员数量与干预成功率之间的相关性：
+
+```{r correlation}
+
+correlation_table <- data.frame(Variable=names(food_data[,c(19:24)]),Coefficient=NA,P_value=NA)
+correlation_table$Coefficient <- rcorr(as.matrix(food_data[,c(19:24,36)]), type = "spearman")$r[1:6,7]
+correlation_table$P_value <-rcorr(as.matrix(food_data[,c(19:24,36)]), type = "spearman")$P[1:6,7]
+
+correlation_table
+```
+
+根据需要，我们进行简单的线性回归，并将其汇总为下面的回归表：
+
+```{r regression1, eval=TRUE}
+
+summary(lm(`Total%ofInterventionsachieved(premisesratedA-E)`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data))
+summary(lm(`Total%ofInterventionsachieved-premisesratedA`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data))
+summary(lm(`Total%ofInterventionsachieved-premisesratedB`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data))
+summary(lm(`Total%ofInterventionsachieved-premisesratedC`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data))
+summary(lm(`Total%ofInterventionsachieved-premisesratedD`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data))
+summary(lm(`Total%ofInterventionsachieved-premisesratedE`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data))
+
+# 由于模型的拟合度过低，通过要求 FTE <= 15 来消除一些可能的异常值，再次对 D 级干预的百分比进行回归，查看是否能带来影响
+filter(food_data,`ProfessionalFullTimeEquivalentPosts-occupied *`<=15)%>%
+  lm(`Total%ofInterventionsachieved-premisesratedD`~`ProfessionalFullTimeEquivalentPosts-occupied *`,.)%>%summary()
+```
+
+```{r regression2}
+
+regression_table <- data.frame(Variable=names(food_data[,c(19:24)]),Estimate=NA,P_value=NA,LowerCI=NA,UpperCI=NA)
+
+regression_table[1,2:3] <- (lm(`Total%ofInterventionsachieved(premisesratedA-E)`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%summary())$coefficients[2,c(1,4)]
+regression_table[2,2:3] <- (lm(`Total%ofInterventionsachieved-premisesratedA`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%summary())$coefficients[2,c(1,4)]
+regression_table[3,2:3] <- (lm(`Total%ofInterventionsachieved-premisesratedB`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%summary())$coefficients[2,c(1,4)]
+regression_table[4,2:3] <- (lm(`Total%ofInterventionsachieved-premisesratedC`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%summary())$coefficients[2,c(1,4)]
+regression_table[5,2:3] <- (lm(`Total%ofInterventionsachieved-premisesratedD`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%summary())$coefficients[2,c(1,4)]
+regression_table[6,2:3] <- (lm(`Total%ofInterventionsachieved-premisesratedE`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%summary())$coefficients[2,c(1,4)]
+regression_table[1,4:5] <- (lm(`Total%ofInterventionsachieved(premisesratedA-E)`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%confint())[2,]
+regression_table[2,4:5] <- (lm(`Total%ofInterventionsachieved-premisesratedA`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%confint())[2,]
+regression_table[3,4:5] <- (lm(`Total%ofInterventionsachieved-premisesratedB`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%confint())[2,]
+regression_table[4,4:5] <- (lm(`Total%ofInterventionsachieved-premisesratedC`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%confint())[2,]
+regression_table[5,4:5] <- (lm(`Total%ofInterventionsachieved-premisesratedD`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%confint())[2,]
+regression_table[6,4:5] <- (lm(`Total%ofInterventionsachieved-premisesratedE`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data)%>%confint())[2,]
+
+regression_table
+```
+
+```{r plot5}
+plot5 <- ggplot(regression_table, aes(x=factor(Variable,labels = c("A","B","C","D","E","A-E")),
+                              y=Estimate,ymin=LowerCI,ymax=UpperCI))+geom_point()+geom_linerange()+labs(x="回归模型",y="系数与 95% 置信区间",title = "执法人员数量与干预成功率回归",subtitle = "注意：由于异常值的存在，D 评级的成功率展现出了不同的关系")+geom_hline(yintercept = 0,lty="dashed",col="brown")
+
+plot5
+```
+
+只有针对 D 评级的执法人员数量对干预效果百分比的影响显著不同于 0，置信区间在 95% 的水平上等于 [-1.72,-0.51]，t(345)=-3.64，P 值小于 0.01。但这可能是由于异常值或/和执法人员数量 \> 15 的观测值不足造成的虚假关系。
+
+如果我们仅使用执法人员数量 \> 15 的观测值运行 D 回归模型，该系数将变得不显著，置信区间在 95% 的水平上等于 [-0.02,0.64]，t(343)=1.82，P 值 \> 0.05。
+
+## 执法人员相对于 1000 家餐饮单位的比例与干预成功率的关系
+
+在之前的步骤中，我们使用每个地方当局的执法人员数量作为变量。但执法人员的数量本身不具备实际含义，它需要与相应的餐饮单位数量进行比较。因此，我们生成“执法人员相对于 1000 家餐饮单位的比例”指标，来判断数量是否相对“多”或“少”。
+
+```{r }
+
+food_data <- mutate(food_data,establishment_number=`Totalestablishments(includingnotyetrated&outside)`-Establishmentsnotyetratedforintervention-Establishmentsoutsidetheprogramme,)
+
+food_data <- mutate(food_data,FTE_per_1000_establishments=food_data$`ProfessionalFullTimeEquivalentPosts-occupied *`/food_data$establishment_number*1000)
+
+# 执法人员相对于 1000 家餐饮单位的比例分布图
+ggplot(food_data,aes(x=FTE_per_1000_establishments,y=..density..))+geom_histogram(binwidth = 0.1)+
+  labs(x="执法人员相对于 1000 家餐饮单位的比例",y="概率密度",title = "执法人员相对于 1000 家餐饮单位的比例分布图")+
+  geom_vline(xintercept = mean(food_data$FTE_per_1000_establishments),linetype="dashed")+
+  annotate("text",x=3.7,y=0.6,
+           label=paste("均值 =",round(mean(food_data$FTE_per_1000_establishments),2)))
+```
+
+直方图中有一个值为 9.77的异常值，我们决定在进一步分析之前将其删除。
+
+```{r}
+# 删除异常值
+filter(food_data,FTE_per_1000_establishments>7)$FTE_per_1000_establishments
+food_data <- filter(food_data,FTE_per_1000_establishments<=7)
+```
+
+使用散点图和箱型图来直观显示执法人员相对于 1000 家餐饮单位的比例与干预成功率的关系，如下所示：
+
+```{r plot6, message=FALSE}
+plot6 <- ggplot(food_data,aes(x=FTE_per_1000_establishments ,y=`Total%ofInterventionsachieved(premisesratedA-E)`))+
+  geom_point()+geom_smooth(method = "lm")+labs(x="执法人员相对于 1000 家餐饮单位的比例",y="干预成功率分布图 (A-E级)",subtitle = "执法人员相对于餐饮单位的比例与干预成功率的关系 (R=0.039)")
+
+plot6 
+```
+
+```{r plot7, message=FALSE, warning=FALSE}
+plot7 <- ggarrange(
+  
+ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedA`,x=FTE_per_1000_establishments))+
+  
+  geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人数/1000单位",y="干预成功率 (%)",subtitle = "A (R=0.003)")+ylim(0,100),
+ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedB`,x=FTE_per_1000_establishments))+
+  
+  geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人数/1000单位",y="干预成功率 (%)",subtitle = "B (R=-0.003)")+ylim(0,100),
+ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedC`,x=FTE_per_1000_establishments))+
+  
+  geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人数/1000单位",y="干预成功率 (%)",subtitle = "C (R=0.015)")+ylim(0,100),
+ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedD`,x=FTE_per_1000_establishments))+
+  
+  geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人数/1000单位",y="干预成功率 (%)",subtitle = "D (R=0.013)")+ylim(0,100),
+ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedE`,x=FTE_per_1000_establishments))+
+  
+  geom_point(size=1)+geom_smooth(method = "lm")+
+  labs(x="执法人数/1000单位",y="干预成功率 (%)",subtitle = "E (R=0.035)")+ylim(0,100))
+
+plot7
+```
+
+在进行回归之前，让我们先检查一下执法人员相对于 1000 家餐饮单位的比例与干预成功率之间的相关性：
+
+```{r}
+correlation_table2 <- data.frame(Variable=names(food_data[,c(19:24)]),Coefficient=NA,P_value=NA)
+correlation_table2$Coefficient <- rcorr(as.matrix(food_data[,c(19:24,39)]), type = "spearman")$r[1:6,7]
+correlation_table2$P_value <-rcorr(as.matrix(food_data[,c(19:24,39)]), type = "spearman")$P[1:6,7]
+correlation_table2
+```
+
+根据需要，我们进行简单的线性回归，并将其汇总为下面的回归表：
+
+```{r eval=TRUE}
+summary(lm(`Total%ofInterventionsachieved(premisesratedA-E)`~FTE_per_1000_establishments,food_data))
+summary(lm(`Total%ofInterventionsachieved-premisesratedA`~FTE_per_1000_establishments,food_data))
+summary(lm(`Total%ofInterventionsachieved-premisesratedB`~FTE_per_1000_establishments,food_data))
+summary(lm(`Total%ofInterventionsachieved-premisesratedC`~FTE_per_1000_establishments,food_data))
+summary(lm(`Total%ofInterventionsachieved-premisesratedD`~FTE_per_1000_establishments,food_data))
+summary(lm(`Total%ofInterventionsachieved-premisesratedE`~FTE_per_1000_establishments,food_data))
+```
+
+```{r}
+regression_table2 <- data.frame(Variable=names(food_data[,c(19:24)]),Estimate=NA, t_DF345=NA,P_value=NA,LowerCI=NA,UpperCI=NA)
+
+regression_table2[1,2:4] <- (lm(`Total%ofInterventionsachieved(premisesratedA-E)`~FTE_per_1000_establishments,food_data)%>%summary())$coefficients[2,c(1,3,4)]
+
+regression_table2[2,2:4] <- (lm(`Total%ofInterventionsachieved-premisesratedA`~FTE_per_1000_establishments,food_data)%>%summary())$coefficients[2,c(1,3,4)]
+
+regression_table2[3,2:4] <- (lm(`Total%ofInterventionsachieved-premisesratedB`~FTE_per_1000_establishments,food_data)%>%summary())$coefficients[2,c(1,3,4)]
+
+regression_table2[4,2:4] <- (lm(`Total%ofInterventionsachieved-premisesratedC`~FTE_per_1000_establishments,food_data)%>%summary())$coefficients[2,c(1,3,4)]
+
+regression_table2[5,2:4] <- (lm(`Total%ofInterventionsachieved-premisesratedD`~FTE_per_1000_establishments,food_data)%>%summary())$coefficients[2,c(1,3,4)]
+
+regression_table2[6,2:4] <- (lm(`Total%ofInterventionsachieved-premisesratedE`~FTE_per_1000_establishments,food_data)%>%summary())$coefficients[2,c(1,3,4)]
+
+regression_table2[1,5:6] <- (lm(`Total%ofInterventionsachieved(premisesratedA-E)`~FTE_per_1000_establishments,food_data)%>%confint())[2,]
+
+regression_table2[2,5:6] <- (lm(`Total%ofInterventionsachieved-premisesratedA`~FTE_per_1000_establishments,food_data)%>%confint())[2,]
+
+regression_table2[3,5:6] <- (lm(`Total%ofInterventionsachieved-premisesratedB`~FTE_per_1000_establishments,food_data)%>%confint())[2,]
+
+regression_table2[4,5:6] <- (lm(`Total%ofInterventionsachieved-premisesratedC`~FTE_per_1000_establishments,food_data)%>%confint())[2,]
+
+regression_table2[5,5:6] <- (lm(`Total%ofInterventionsachieved-premisesratedD`~FTE_per_1000_establishments,food_data)%>%confint())[2,]
+regression_table2[6,5:6] <- (lm(`Total%ofInterventionsachieved-premisesratedE`~FTE_per_1000_establishments,food_data)%>%confint())[2,]
+
+regression_table2
+```
+
+```{r plot8}
+plot8 <- ggplot(regression_table2, aes(x=factor(Variable,labels = c("A","B","C","D","E","A-E")),
+                              y=Estimate,ymin=LowerCI,ymax=UpperCI))+geom_point()+geom_linerange()+labs(x="回归模型",y="系数与 95% 置信区间",title = "执法人员相对于餐饮单位的比例与干预成功率的回归")+geom_hline(yintercept = 0,lty="dashed",col="brown")
+
+plot8
+```
+
+每 1000 家单位对应的执法人员数量对整体干预（A-E）成功率的影响与 0 显著不同，置信区间在 95% 的水平上等于 [1.19,3.62]，t(345) = 3.90，P 值 \< 0.01。
+
+------------------------------------------------------------------------
+
+# 第二部分：主要发现和建议
+
+## 对风险较高的餐饮单位进行的干预效果更好
+
+我们首先检查所有餐饮单位实现干预的百分比分布情况，该分布图呈负偏斜（或左偏斜）。考虑到倾斜度，中位数比平均值更适合代表各地方当局的平均值。根据计算，中位数为 90.82，标准差为 12.38。
+
+```{r, echo=FALSE, warning=FALSE}
+plot1
+```
+
+接下来，我们继续分别检查被评为 A、B、C、D 和 E 级公共影响力的餐饮单位的干预成功率分布情况，它们都呈负偏态（或右偏态）。当卫生风险降低时（从 A 级到 E 级），干预成功率百分比的中位数也随之降低，这意味着**对风险较高的餐饮单位的干预成功率较高**。
+
+```{r, echo=FALSE}
+plot2
+```
+
+## 执法人员数量与干预成功率之间的关系较弱
+
+在建立回归模型之前，我们使用散点图来直观显示相关变量之间的关系。无论是整体衡量，还是按 A、B、C、D 和 E 类分别衡量，“干预成功率”与“执法人员数量”本身之间似乎都没有明显的关系，**除 D 类机构外，蓝色拟合线都是近似水平的**。为了更好地观察这些过于集中的数据点，同时减轻异常值的影响，我们将连续变量“执法人员数量”切分为四个区间，并绘制了额外的箱形图。
+
+```{r, echo=FALSE, message=FALSE}
+plot3
+plot4
+```
+
+以下是执法人员数量分别对所有A、B、C、D 和 E 评级的餐饮单位的干预成功率的回归系数图。
+
+与我们在散点图中发现的一样，只有在 D 级的餐饮单位中，"执法人员的数量"与“干预成功率”之间存在明显的关系。简单来说，这意味着执法人员数量的增加可能会提高 D 级单位的干预成功率。然而，这个观察结果可能是因为受到一些特殊因素的影响，例如那些执法人员人数超过 15 的地方当局。当我们仅考虑那些执法人员数量不超过 15 的地方当局时，我们发现执法人员数量对 D 级单位的干预成功率的影响并不显著。这意味着在这个人数范围内，增加执法人员数量可能并不会显著提高 D 评级单位对干预措施的反应。
+
+```{r, echo=FALSE}
+plot5
+```
+
+## 执法人员相对于 1000 家餐饮单位的比例与干预成功率之间的关系密切
+
+同样，在建立回归模型之前，我们使用散点图来直观地显示各种关系。就整体干预措施的成功率而言，“执法人员相对于 1000 家餐饮单位的比例”比“执法人员数量”具有更明显的积极影响。与现实情况相符，即使两个地方当局的执法人员总数相同，但负责更多餐饮单位的地方当局的执法人员人均工作量会更大，这可能导致执法干预成功率的下降。
+
+就被评为 A、B、C、D 和 E 级的单位而言，**执法人员相对于 1000 家餐饮单位的比例对风险较低的机构（被评为 C、D 和 E 级）的干预效果似乎更强**。如图所示，蓝色拟合线从 A 到 E 越来越陡。
+
+```{r, echo=FALSE, message=FALSE}
+plot6
+plot7
+```
+
+以上图表展示了执法人员相对于 1000 家餐饮单位的比例与各级别（A、B、C、D和E）餐饮单位对政府干预措施的成功率之间的关系。
+
+我们发现，当我们增加执法人员相对于 1000 家餐饮单位的比例时，并不是所有级别的餐饮单位对政府干预的成功率都有所提高。
+
+**对于被认为风险更高的 A 级和 B 级单位，增加执法人员的数量对干预成功率的提高没有太大的影响**。这可能是由于地方当局对于该类单位已经进行了重点关注，干涉措施近似于饱和状态。在近饱和状态下，增加执法人员相对于餐饮单位的比例并不会显著提高执法行动的干预成功率。
+
+**对于被认为风险较低的 C 级、D 级和 E 级单位，增加专业人员的数量会显著提高干预成功率**。这可能是由于这些较低风险的单位在资源有限的情况下没有成为政府干预的首要目标。因此，对于这类单位，在资源充足的情况下可以尝试通过提高执法人员相对于餐饮单位的比例来提高干预成功率。
+
+**建议**：由于提高“执法人员相对于餐饮单位的比例”比单纯提高“执法人员数量”更具备实际价值，但本报告中并未涉及关于最优人员配比的讨论。因此，我们建议未来的研究应探讨如何有效配置执法人员，以便最大程度地提高干预措施的成功率。这样的研究结果将有助于地方当局做出更有效的资源分配决策。
+
+## 执法人员相对于 1000 家餐饮单位的比例与干预成功率的回归分析
+
+```{r echo=FALSE}
+# regression_table2
+plot8
+```
+
+上图代表执法人员相对于 1000 家餐饮单位的比例每增加 1% 对于干预成功率的影响。与上面结论类似，对于高风险的 A 级和 B 级单位，二者之间的关系并不显著（置信区间包含了 0 值）。对于低风险的 C、D、E 级单位，执法人员相对于 1000 家餐饮单位的比例每增加 1 %，干预成功率将分别平均增加 1.17%、1.74% 和 4.44%。
+
+# 附录：数据字典
+
+| 变量名称                                                                                              | 变量含义                                                                                                    |
+|----------------------------|--------------------------------------------|
+| Country                                                                                               | 地方当局所属的国家名称                                                                                      |
+| LAType                                                                                                | 地方当局的类型                                                                                              |
+| LAName                                                                                                | 地方当局的名称                                                                                              |
+| Totalestablishments(includingnotyetrated&outside)                                                     | 截至 2020 年 3 月 31 日，地方当局报告注册（或批准）的餐饮单位数量                                       |
+| Establishmentsnotyetratedforintervention                                                              | 尚未进行食品卫生风险评级（如新企业等）的餐饮单位数量                                                    |
+| Establishmentsoutsidetheprogramme                                                                     | 不在《卫生和食品安全法》管辖范围内的餐饮单位数量                                                        |
+| Total%ofBroadlyCompliantestablishmentsratedA-E                                                        | 在《食品卫生评级计划》中获得3分（基本满意）或以上卫生评级的餐饮单位的百分比                             |
+| Total%ofBroadlyCompliantestablishments(includingnotyetrated)                                          | 在《食品卫生评级计划》中获得3分（基本满意）或以上卫生评级的餐饮单位的百分比（包括尚未进行评级的餐饮单位）   |
+| Total%ofBroadlyCompliantestablishments-A                                                              | 在《食品卫生评级计划》中获得3分（基本满意）或以上卫生评级的餐饮单位，且获得 A 级影响力评级的百分比      |
+| Total%ofBroadlyCompliantestablishments-B                                                              | 在《食品卫生评级计划》中获得3分（基本满意）或以上卫生评级的餐饮单位，且获得 B 级影响力评级的百分比      |
+| Total%ofBroadlyCompliantestablishments-C                                                              | 在《食品卫生评级计划》中获得3分（基本满意）或以上卫生评级的餐饮单位，且获得 C 级影响力评级的百分比      |
+| Total%ofBroadlyCompliantestablishments-D                                                              | 在《食品卫生评级计划》中获得3分（基本满意）或以上卫生评级的餐饮单位，且获得 D 级影响力评级的百分比      |
+| Total%ofBroadlyCompliantestablishments-E                                                              | 在《食品卫生评级计划》中获得3分（基本满意）或以上卫生评级的餐饮单位，且获得 E 级影响力评级的百分比      |
+| Aratedestablishments                                                                                  | 影响力分数大于92的餐饮单位数量，被视为对公共健康的潜在影响力最大，其干预频率至少为每6个月一次               |
+| Bratedestablishments                                                                                  | 影响力分数在72到91之间的餐饮单位数量，其干预频率至少为每12个月一次                                          |
+| Cratedestablishments                                                                                  | 影响力分数在52到71之间的餐饮单位数量，其干预频率至少为每18个月一次                                          |
+| Dratedestablishments                                                                                  | 影响力分数在31到51之间的餐饮单位数量，其干预频率至少为每24个月一次                                          |
+| Eratedestablishments                                                                                  | 影响力分数小于30的餐饮单位数量，被视为对公共健康的潜在影响力最小，其干预频率为每3年一次，或采用其他执法措施 |
+| Total%ofInterventionsachieved(premisesratedA-E)                                                       | 根据《食品卫生干预情况评级》计算出的干预行动完成率                                                          |
+| Total%ofInterventionsachieved-premisesratedA                                                          | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 A 的单位的干预行动完成率                                 |
+| Total%ofInterventionsachieved-premisesratedB                                                          | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 B 的单位的干预行动完成率级                               |
+| Total%ofInterventionsachieved-premisesratedC                                                          | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 C 的单位的干预行动完成率                                 |
+| Total%ofInterventionsachieved-premisesratedD                                                          | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 D 的单位的干预行动完成率                                 |
+| Total%ofInterventionsachieved-premisesratedE                                                          | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 E 的单位的干预行动完成率                                 |
+| Total%ofInterventionsachieved-premisesnotyetrated                                                     | 根据《食品卫生干预情况评级》计算出的尚未进行影响力评级单位的干预行动完成率                                  |
+| Totalnumberofestablishmentssubjecttoformalenforcementactions-Voluntaryclosure                         | 因未能符合《卫生和食品安全法》而被自愿关闭的餐饮单位总数                                                    |
+| Totalnumberofestablishmentssubjecttoformalenforcementactions-Seizure,detention&surrenderoffood        | 因未能符合《卫生和食品安全法》而被扣押和上缴食品的餐饮单位总数                                              |
+| Totalnumberofestablishmentssubjecttoformalenforcementactions-Suspension/revocationofapprovalorlicence | 因未能符合《卫生和食品安全法》而被暂停/撤销批准或许可的餐饮单位总数                                         |
+| Totalnumberofestablishmentssubjecttoformalenforcementactions-Hygieneemergencyprohibitionnotice        | 因未能符合《卫生和食品安全法》而被下发卫生紧急禁令通知的餐饮单位总数                                        |
+| Totalnumberofestablishmentssubjecttoformalenforcementactions-Prohibitionorder                         | 因未能符合《卫生和食品安全法》而被下达禁令的餐饮单位总数                                                    |
+| Totalnumberofestablishmentssubjecttoformalenforcementactions-Simplecaution                            | 因未能符合《卫生和食品安全法》而被下达简单指控的餐饮单位总数                                                |
+| Totalnumberofestablishmentssubjecttoformalenforcementactions-Hygieneimprovementnotices                | 因未能符合《卫生和食品安全法》而被下发卫生改进通知的餐饮单位总数                                            |
+| Totalnumberofestablishmentssubjecttoformalenforcementactions-Remedialaction&detentionnotices          | 因未能符合《卫生和食品安全法》而被下发补救行动和扣留通知的餐饮单位总数                                      |
+| TotalnumberofestablishmentssubjecttoWrittenwarnings                                                   | 因未能符合《卫生和食品安全法》而被下发书面警告的餐饮单位总数                                                |
+| Totalnumberofestablishmentssubjecttoformalenforcementactions-Prosecutionsconcluded                    | 因未能符合《卫生和食品安全法》而被起诉的餐饮单位总数                                                        |
+| ProfessionalFullTimeEquivalentPosts-occupied \*                                                       | 在食品卫生方面的执法人员数量                                                                            |
+
+------------------------------------------------------------------------
