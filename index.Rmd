@@ -28,7 +28,7 @@ options(width=100)
 
 在餐饮单位的公众影响力被评级后，地方当局将对其进行检查，以确定它们是否符合卫生和食品安全法规的要求。如果单位未能达到"基本满意"的标准，地方当局将对其进行干预，要求他们纠正问题。如果干预后，单位成功达到了要求，他们将被允许继续运营。
 
-该项目旨在通过对未能达到"基本满意"要求的餐饮单位是否对地方当局的干预措施做出了有效反应，地方当局成功执行的执法行动与专业执法人员数量的关系、和执法人员与餐饮单位数量的比例之间的关系进行分析，找出影响餐饮单位对干预行动反应成功率的因素，为地方当局的决策提供依据，以提高整体食品安全水平。
+本项目对地方当局干预餐饮单位的成功率进行分析，既考虑了餐饮单位同专业执法人员数量的关系，也考虑了餐饮单位数量与执法人员数量比例对成功率的影响。该分析旨在为地方当局的决策提供依据，以提高整体食品安全水平。
 
 **该项目的报告分为两部分**。第一部分针对专业人士，详细展现了我们的数据分析过程和结果。第二部分则针对政策制定者，概述了我们的主要发现和建议。我们希望通过这种方式，使得无论读者的背景如何，都能够理解和利用我们的研究成果。
 
@@ -172,32 +172,31 @@ plot3
 
 ```{r plot4, warning=FALSE, message=FALSE}
 
-food_data$FTE <- cut(food_data$`ProfessionalFullTimeEquivalentPosts-occupied *`,breaks = c(0,2,4,6,23))
+food_data$FTE <- cut(food_data$`ProfessionalFullTimeEquivalentPosts-occupied *`,breaks = c(0,5,10,15,23))
 
 plot4 <- ggarrange(
-
+  
   ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedA`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
-  
-    geom_point(size=1)+geom_smooth(method = "lm")+
+  geom_point(size=1)+geom_smooth(method = "lm")+
   labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "A (R=0.002)")+ylim(0,100),
-ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedB`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
   
+  ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedB`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
   geom_point(size=1)+geom_smooth(method = "lm")+
   labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "B (R=0.007)")+ylim(0,100),
-ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedC`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
   
+  ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedC`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
   geom_point(size=1)+geom_smooth(method = "lm")+
   labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "C (R=-0.003)")+ylim(0,100),
-ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedD`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
   
+  ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedD`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
   geom_point(size=1)+geom_smooth(method = "lm")+
   labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "D (R=0.034)")+ylim(0,100),
-ggplot(food_data,aes(x=FTE,y=`Total%ofInterventionsachieved-premisesratedD`))+geom_boxplot()+
   
+  ggplot(food_data,aes(x=FTE,y=`Total%ofInterventionsachieved-premisesratedD`))+geom_boxplot()+
   geom_jitter(width = 0.4,size=0.05,alpha=0.5,col="purple")+
-  labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "箱型图")+ylim(0,100),
-ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedE`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
+  labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "D 级箱型图")+ylim(0,100),
   
+  ggplot(food_data,aes(y=`Total%ofInterventionsachieved-premisesratedE`,x=`ProfessionalFullTimeEquivalentPosts-occupied *`))+
   geom_point(size=1)+geom_smooth(method = "lm")+
   labs(x="执法人员数量",y="干预成功率 (%)",subtitle = "E (R=0.002)")+ylim(0,100))
 
@@ -226,7 +225,8 @@ summary(lm(`Total%ofInterventionsachieved-premisesratedC`~`ProfessionalFullTimeE
 summary(lm(`Total%ofInterventionsachieved-premisesratedD`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data))
 summary(lm(`Total%ofInterventionsachieved-premisesratedE`~`ProfessionalFullTimeEquivalentPosts-occupied *`,food_data))
 
-# 由于模型的拟合度过低，通过要求 FTE <= 15 来消除一些可能的异常值，再次对 D 级干预的百分比进行回归，查看是否能带来影响
+# 由于模型的拟合度过低，通过要求 FTE <= 15 来消除一些可能的异常值
+# 再次对 D 级干预的百分比进行回归，查看是否能带来影响
 filter(food_data,`ProfessionalFullTimeEquivalentPosts-occupied *`<=15)%>%
   lm(`Total%ofInterventionsachieved-premisesratedD`~`ProfessionalFullTimeEquivalentPosts-occupied *`,.)%>%summary()
 ```
@@ -402,7 +402,7 @@ plot2
 
 ## 执法人员数量与干预成功率之间的关系较弱
 
-在建立回归模型之前，我们使用散点图来直观显示相关变量之间的关系。无论是整体衡量，还是按 A、B、C、D 和 E 类分别衡量，“干预成功率”与“执法人员数量”本身之间似乎都没有明显的关系，**除 D 类机构外，蓝色拟合线都是近似水平的**。为了更好地观察这些过于集中的数据点，同时减轻异常值的影响，我们将连续变量“执法人员数量”切分为四个区间，并绘制了额外的箱形图。
+在建立回归模型之前，我们使用散点图来直观显示相关变量之间的关系。无论是整体衡量，还是按 A、B、C、D 和 E 类分别衡量，“干预成功率”与“执法人员数量”本身之间似乎都没有明显的关系，**除 D 评级单位外，蓝色拟合线都是近似水平的**。为了更好地观察这些过于集中的数据点，同时减轻异常值的影响，我们将连续变量“执法人员数量”切分为四个区间，并绘制了额外的 D 评级箱形图。
 
 ```{r, echo=FALSE, message=FALSE}
 plot3
@@ -421,7 +421,7 @@ plot5
 
 同样，在建立回归模型之前，我们使用散点图来直观地显示各种关系。就整体干预措施的成功率而言，“执法人员相对于 1000 家餐饮单位的比例”比“执法人员数量”具有更明显的积极影响。与现实情况相符，即使两个地方当局的执法人员总数相同，但负责更多餐饮单位的地方当局的执法人员人均工作量会更大，这可能导致执法干预成功率的下降。
 
-就被评为 A、B、C、D 和 E 级的单位而言，**执法人员相对于 1000 家餐饮单位的比例对风险较低的机构（被评为 C、D 和 E 级）的干预效果似乎更强**。如图所示，蓝色拟合线从 A 到 E 越来越陡。
+就被评为 A、B、C、D 和 E 级的单位而言，**执法人员相对于 1000 家餐饮单位的比例对风险较低的单位（被评为 C、D 和 E 级）的干预效果似乎更强**。如图所示，蓝色拟合线从 A 到 E 越来越陡。
 
 ```{r, echo=FALSE, message=FALSE}
 plot6
