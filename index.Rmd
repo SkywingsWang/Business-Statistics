@@ -52,7 +52,7 @@ options(width=100)
 | Eratedestablishments                              | 影响力分数小于30的餐饮单位数量，被视为对公共健康的潜在影响力最小，其干预频率为每3年一次，或采用其他执法措施 |
 | Total%ofInterventionsachieved(premisesratedA-E)   | 根据《食品卫生干预情况评级》计算出的干预行动完成率                                                          |
 | Total%ofInterventionsachieved-premisesratedA      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 A 的单位的干预行动完成率                                 |
-| Total%ofInterventionsachieved-premisesratedB      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 B 的单位的干预行动完成率级                               |
+| Total%ofInterventionsachieved-premisesratedB      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 B 的单位的干预行动完成率                               |
 | Total%ofInterventionsachieved-premisesratedC      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 C 的单位的干预行动完成率                                 |
 | Total%ofInterventionsachieved-premisesratedD      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 D 的单位的干预行动完成率                                 |
 | Total%ofInterventionsachieved-premisesratedE      | 根据《食品卫生干预情况评级》计算出的针对影响力评级为 E 的单位的干预行动完成率                                 |
